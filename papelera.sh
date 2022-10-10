@@ -20,7 +20,7 @@ ayuda(){
 	echo "--recuperar nombreArchivo"
 	echo "--vaciar"
 	echo "--eliminar nombreArchivo"
-	echo "--destruir nombreArchivo"
+	echo "--borrar nombreArchivo"
 	echo "------------------------------------------------------------------------"
 }
 
@@ -60,7 +60,7 @@ recuperar(){
 	fi
 
 	Recuperar="$1"
-	CANTNR=$(zipinfo ~/papelera.zip |grep ^-|wc -l) #guardo la cantidad de elementos que hay en el zip
+	#CANTNR=$(zipinfo ~/papelera.zip |grep ^-|wc -l) #guardo la cantidad de elementos que hay en el zip
 	contadorArchivosIguales=0
 	archivosIguales=""
 	declare -a arrayArchivos
@@ -172,35 +172,95 @@ eliminar(){
 	fi
 }
 
-destruir(){
+borrar(){
 	( [ $# -ne 1 ] ) && errorParametros
 
-	if [ -f ~/papelera.zip ] #-f verifica que el archivo exista
+	if [ ! -f ~/papelera.zip ] 	
 	then
-		if [ $(zipinfo ~/papelera.zip |grep ^-|wc -l) -gt 0 ] 
-		then 
-			var=$(realpath $1)
-			nombreArchivoADestruir=$(basename "$var")
+		echo "Error, no existe la papelera"
+		exit 1
+	fi
+
+	if [ $(zipinfo ~/papelera.zip |grep ^-|wc -l) -eq 0 ]
+	then
+		echo "Error, la papelera está vacía"
+		exit 1
+	fi
+	
+	Borrar="$1"
+	contadorArchivosIguales=0
+	archivosIguales=""
+	declare -a arrayArchivos
+	archivo_a_borrar=""
+
+	IFS=$'\n'
+	for archivo in $(zip -sf ~/papelera | awk '{print substr($0,3)}' )
+	do
+		rutaArchivo=$(dirname "$archivo")
+		nombreArchivo=$(basename "$archivo")
+		if [ "$nombreArchivo" == "$Borrar" ]
+		then
+			((contadorArchivosIguales++))
+			archivosIguales="$archivosIguales$contadorArchivosIguales - $nombreArchivo $rutaArchivo;"
+			arrayArchivos[$contadorArchivosIguales]="$rutaArchivo/$nombreArchivo"
+			archivo_a_borrar="$rutaArchivo/$nombreArchivo"
+		fi
+	done
+
+	if [ "$contadorArchivosIguales" -eq 0 ]
+	then
+		echo "No existe el archivo en la papelera"
+		exit 1
+	else
+		if [ "$contadorArchivosIguales" -eq 1 ]
+		then		
+			zip -q -d ~/papelera.zip "$archivo_a_borrar"
+			echo "Se destruyó el archivo de la papelera"
+			exit 0
+		else
+			echo "$archivosIguales" | awk 'BEGIN{FS=";"} {for(i=1; i < NF; i++) print $i}'
+			echo "¿Qué archivo desea borrar?"
+			read opcion
+			
+			if [ $opcion -gt 0 -a $opcion -le "${#arrayArchivos[@]}" ]
+			then
+				seleccion="${arrayArchivos[$opcion]}"
+			else
+				echo ""
+				echo "Error, selección inválida"
+				echo ""
+				exit 1
+			fi
+
+			elementoNumero=0
+			indice=0
 			IFS=$'\n'
-			for archivo in $(zip -sf ~/papelera | awk '{print substr($0,3)}' )
+			#realizo una indexacion del elemento elegido con los elementos del zip
+			for archivo in $(zip -sf ~/papelera |  awk '{print substr($0,3)}')
 			do
-				nombreArchivo=$(basename "$archivo")
-				if [ "$nombreArchivo" == "$nombreArchivoADestruir" ]
+				((indice++))
+				if [ "$seleccion" == "$archivo" ]
+				then
+					elementoNumero=$indice
+				fi
+			done
+			indice=0
+			IFS=$'\n'
+			#busco de forma incremental hasta encontrar en indice anterior y elimino el archivo en el zip 
+			for archivo in $(zip -sf ~/papelera  |  awk '{print substr($0,3)}' )
+			do
+				#echo "$archivo"
+				((indice++))
+				if [ "$indice" == "$elementoNumero" ]
 				then
 					zip -q -d ~/papelera.zip "$archivo"
 					echo "Se destruyó el archivo de la papelera"
 					exit 0
 				fi
 			done
-			echo "Error, no existe el archivo a eliminar"
-		else
-			echo "Error, la papelera está vacía"
-			exit 1
 		fi
-	else
-		echo "Error, no existe la papelera"
-		exit 1
 	fi
+	echo "Archivo borrado"
 }
 
 errorParametros(){
@@ -228,13 +288,13 @@ case $1 in
 		vaciar;;
 		
 	"--recuperar")
-		recuperar $2;;
+		recuperar "$2";;
 
 	"--eliminar")
 		eliminar "$2";;
 		
-	"--destruir")
-		destruir $2;;
+	"--borrar")
+		borrar "$2";;
 
 	*) 
 		errorParametros
